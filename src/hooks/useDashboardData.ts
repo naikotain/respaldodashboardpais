@@ -224,11 +224,14 @@ const calcularCostosConSistemaPais = (calls: Call[]) => {
   let totalCosto = 0;
   let totalRetellCost = 0;
   let totalCallCost = 0;
+  let totalMinutos = 0; 
   
   const costoPorPais: Record<string, { costo: number; llamadas: number }> = {};
   const costoPorTipo = { inbound: 0, outbound: 0 };
   const costoPorAgente: Record<string, { costo: number; llamadas: number }> = {};
   const costoPorDia: Record<string, number> = {};
+  const minutosPorDia: Record<string, number> = {};
+  
 
   calls.forEach(call => {
     // Usar country_code o default a Chile para datos antiguos
@@ -238,10 +241,12 @@ const calcularCostosConSistemaPais = (calls: Call[]) => {
     // Calcular costo usando el nuevo sistema
     const costoTotal = calculateCallCost(retellCost, call.duration || '0m', countryCode);
     const costoLlamada = costoTotal - retellCost;
+    const minutos = parseDuration(call.duration || '0m') / 60; // ✅ CALCULAR MINUTOS
     
     totalCosto += costoTotal;
     totalRetellCost += retellCost;
     totalCallCost += costoLlamada;
+    totalMinutos += minutos;
 
     // Acumular por país
     if (!costoPorPais[countryCode]) {
@@ -265,22 +270,43 @@ const calcularCostosConSistemaPais = (calls: Call[]) => {
     costoPorAgente[agentId].costo += costoTotal;
     costoPorAgente[agentId].llamadas += 1;
 
-    // Acumular por día
+
+    // ✅ ACUMULAR COSTOS POR DÍA CORRECTAMENTE
     if (call.started_at) {
-      const day = new Date(call.started_at).toLocaleDateString('es-ES', { weekday: 'short' });
-      costoPorDia[day] = (costoPorDia[day] || 0) + costoTotal;
+      const fecha = new Date(call.started_at);
+      const diaSemana = fecha.toLocaleDateString('es-ES', { weekday: 'long' }); // "lunes", "martes", etc.
+      const diaKey = diaSemana.toLowerCase(); // Para consistencia
+      
+      costoPorDia[diaKey] = (costoPorDia[diaKey] || 0) + costoTotal;
+      minutosPorDia[diaKey] = (minutosPorDia[diaKey] || 0) + minutos;
     }
   });
 
+  const costoPorMinuto = totalMinutos > 0 ? totalCosto / totalMinutos : 0;
+  const diasSemana = [
+    { key: 'lunes', name: 'Lun', orden: 0 },
+    { key: 'martes', name: 'Mar', orden: 1 },
+    { key: 'miércoles', name: 'Mié', orden: 2 },
+    { key: 'jueves', name: 'Jue', orden: 3 },
+    { key: 'viernes', name: 'Vie', orden: 4 },
+    { key: 'sábado', name: 'Sáb', orden: 5 },
+    { key: 'domingo', name: 'Dom', orden: 6 }
+  ];
+
+    
+
+  
   // Formatear costo por país para el dashboard
   const costoPorPaisFormateado = Object.entries(costoPorPais).map(([codigo, data]) => {
     const country = getCountryCost(codigo);
+    const porcentaje = totalCosto > 0 ? (data.costo / totalCosto) * 100 : 0;
     return {
       pais: country.name,
       codigo,
       costo: parseFloat(data.costo.toFixed(6)),
       llamadas: data.llamadas,
       costoPromedio: data.llamadas > 0 ? parseFloat((data.costo / data.llamadas).toFixed(6)) : 0,
+      porcentaje: parseFloat(porcentaje.toFixed(2)),
       bandera: country.flag
     };
   });
@@ -295,26 +321,29 @@ const calcularCostosConSistemaPais = (calls: Call[]) => {
 
   // Formatear costo por día
   const weekDays = getWeekDays();
-  const costoPorDiaFormateado = weekDays.map(day => ({
-    name: day.name,
-    costo: parseFloat((costoPorDia[day.name] || 0).toFixed(6))
+  const costoPorDiaFormateado = diasSemana.map(dia => ({
+    name: dia.name,
+    costo: parseFloat((costoPorDia[dia.key] || 0).toFixed(6)),
+    minutos: minutosPorDia[dia.key] || 0,
+    costoPorMinuto: (minutosPorDia[dia.key] || 0) > 0 
+      ? parseFloat(((costoPorDia[dia.key] || 0) / (minutosPorDia[dia.key] || 1)).toFixed(6))
+      : 0
   }));
-  const porcentajeRetell = totalCosto > 0 ? (totalRetellCost / totalCosto) * 100 : 0;
-
   
 
   return {
     totalCosto: parseFloat(totalCosto.toFixed(6)),
     costoPromedioPorLlamada: calls.length > 0 ? parseFloat((totalCosto / calls.length).toFixed(6)) : 0,
-    costoPorMinuto: 0, // Ya no es fijo, se calcula por país
+    costoPorMinuto: parseFloat(costoPorMinuto.toFixed(6)), // Ya no es fijo, se calcula por país
     costoPorTipo,
     costoPorAgente: costoPorAgenteFormateado,
     costoPorDia: costoPorDiaFormateado,
-    costoPorPais: costoPorPaisFormateado,
+    costoPorPais: costoPorPaisFormateado, 
     desgloseCostos: {
       totalRetell: parseFloat(totalRetellCost.toFixed(6)),
-      totalLlamadas: calls.length,
-      porcentajeRetell: parseFloat(porcentajeRetell.toFixed(2))
+      totalLlamadas: parseFloat(totalCallCost.toFixed(6)),
+      porcentajeRetell: totalCosto > 0 ? parseFloat(((totalRetellCost / totalCosto) * 100).toFixed(2)) : 0,
+      porcentajeLlamada: totalCosto > 0 ? parseFloat(((totalCallCost / totalCosto) * 100).toFixed(2)) : 0
     }
   };
 };

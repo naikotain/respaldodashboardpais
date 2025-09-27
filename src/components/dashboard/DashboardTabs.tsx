@@ -426,7 +426,8 @@ export const DashboardTabs = ({ data, loading }: DashboardTabsProps) => {
                   <div className="text-xs text-green-700">Promedio/Llamada</div>
                 </div>
                 <div className="p-3 bg-purple-50 rounded-lg">
-                  <div className="text-lg font-bold text-purple-600">${data.costMetrics?.costoPorMinuto.toFixed(4) || '0.0160'}</div>
+                  <div className="text-lg font-bold text-purple-600">${data.costMetrics?.costoPorMinuto.toFixed(4) || '0.0000'}
+                  </div>
                   <div className="text-xs text-purple-700">Por Minuto</div>
                 </div>
                 <div className="p-3 bg-orange-50 rounded-lg">
